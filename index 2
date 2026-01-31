@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AstroSet Defender - Belajar Himpunan</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background-color: #050510;
+            color: white;
+            overflow: hidden; 
+            touch-action: none;
+        }
+        
+        .font-tech {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* Starfield Animation */
+        #starfield {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: radial-gradient(ellipse at bottom, #1B2735 0%, #090A0F 100%);
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle linear infinite;
+        }
+
+        @keyframes twinkle {
+            0% { opacity: 0; transform: translateY(0); }
+            50% { opacity: 1; }
+            100% { opacity: 0; transform: translateY(100vh); }
+        }
+
+        /* Game Canvas */
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background: transparent;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        /* UI Overlay Transitions */
+        .screen {
+            transition: opacity 0.3s ease-in-out;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            overflow-y: auto; /* Allow scrolling for leaderboards on small screens */
+        }
+        
+        .hidden-screen {
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* Custom Button */
+        .btn-space {
+            background: linear-gradient(180deg, #4f46e5 0%, #312e81 100%);
+            border: 2px solid #6366f1;
+            box-shadow: 0 0 15px #6366f1;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .btn-space:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 5px #6366f1;
+        }
+        
+        /* Input Fields */
+        .input-space {
+            background: rgba(17, 24, 39, 0.6);
+            border: 2px solid #4f46e5;
+            color: #e0e7ff;
+            padding: 12px 20px;
+            border-radius: 12px;
+            width: 100%;
+            margin-bottom: 16px;
+            font-family: 'Exo 2', sans-serif;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+        .input-space:focus {
+            outline: none;
+            border-color: #22d3ee;
+            box-shadow: 0 0 15px rgba(34, 211, 238, 0.4);
+            background: rgba(17, 24, 39, 0.9);
+        }
+        
+        /* Popup Info */
+        .popup-animate {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Powerup Notification */
+        .powerup-text {
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            font-weight: bold;
+            color: yellow;
+            pointer-events: none;
+            z-index: 50;
+            animation: floatUp 1s ease-out forwards;
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.8);
+            white-space: nowrap;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -50px); }
+        }
+
+        /* Leaderboard Table */
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(99, 102, 241, 0.5);
+        }
+        
+        /* Scrollbar hide */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Background Stars Container -->
+    <div id="starfield"></div>
+    
+    <!-- Container for dynamic powerup text -->
+    <div id="fxContainer" class="absolute inset-0 pointer-events-none z-40"></div>
+
+    <!-- AUDIO SYSTEM -->
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'shoot') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(110, now + 0.1);
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'correct') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(500, now);
+                osc.frequency.linearRampToValueAtTime(1000, now + 0.1);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'wrong') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'powerup') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.linearRampToValueAtTime(1200, now + 0.2);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+        }
+    </script>
+
+    <!-- CLOUD ONLY BACKEND SYSTEM (Google Sheets) -->
+    <script>
+        // -------------------------------------------------------------
+        // PENTING: GANTI URL DI BAWAH INI DENGAN URL WEB APP GOOGLE APPS SCRIPT ANDA
+        // -------------------------------------------------------------
+        const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwX5DXexj9poQgnGaQVG8b12k0vq6moEDaSHRmw_6QcSyWvd7MBwFpdWi9mBSj89PS5/exec"; 
+        // Contoh: "https://script.google.com/macros/s/AKfycb.../exec"
+
+        // --- FUNGSI SIMPAN SKOR (Hanya Cloud) ---
+        window.saveScoreToCloud = async (name, school, score) => {
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("exec") === false) {
+                console.warn("URL Google Script belum valid.");
+                return;
+            }
+
+            try {
+                const data = { name: name, school: school, score: score };
+                // Gunakan mode 'no-cors' untuk kirim data (fire and forget)
+                // Ini mencegah error CORS saat POST dari browser
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                console.log("Data dikirim ke Cloud.");
+            } catch (e) {
+                console.error("Gagal kirim ke cloud:", e);
+            }
+        };
+
+        // --- FUNGSI AMBIL LEADERBOARD (Hanya Cloud) ---
+        window.loadLeaderboardData = async () => {
+            const listEl = document.getElementById('leaderboardList');
+            listEl.innerHTML = '<div class="text-center text-cyan-300 animate-pulse mt-4">Mengambil data dari Cloud...</div>';
+            
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("exec") === false) {
+                listEl.innerHTML = '<div class="text-center text-red-400 py-4">Database Cloud belum terhubung.<br>Harap pasang URL Script.</div>';
+                return;
+            }
+
+            try {
+                // Fetch GET request (Google Script harus return JSON)
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                if (!response.ok) throw new Error("Gagal terhubung ke server");
+                
+                const cloudData = await response.json();
+                
+                if (!Array.isArray(cloudData) || cloudData.length === 0) {
+                    listEl.innerHTML = '<div class="text-center text-gray-400 py-4">Belum ada data di Cloud.</div>';
+                    return;
+                }
+
+                // Urutkan Tertinggi
+                cloudData.sort((a, b) => b.score - a.score);
+                const scores = cloudData.slice(0, 20); // Top 20
+
+                let html = '';
+                scores.forEach((s, index) => {
+                    let medal = `#${index + 1}`;
+                    let colorClass = "text-white";
+                    if(index === 0) { medal = '🥇'; colorClass="text-yellow-400"; }
+                    else if(index === 1) { medal = '🥈'; colorClass="text-gray-300"; }
+                    else if(index === 2) { medal = '🥉'; colorClass="text-orange-400"; }
+
+                    html += `
+                        <div class="flex items-center justify-between bg-indigo-900/40 p-3 rounded-lg border border-indigo-700/50 mb-2">
+                            <div class="flex items-center gap-3">
+                                <span class="font-bold w-8 text-center text-lg ${colorClass}">${medal}</span>
+                                <div class="text-left">
+                                    <div class="font-bold text-white text-sm md:text-base truncate max-w-[120px]">${s.name}</div>
+                                    <div class="text-[10px] md:text-xs text-cyan-300 uppercase tracking-wider truncate max-w-[120px]">${s.school}</div>
+                                </div>
+                            </div>
+                            <div class="font-tech font-bold text-yellow-300 text-lg">${s.score}</div>
+                        </div>
+                    `;
+                });
+
+                listEl.innerHTML = html;
+            } catch (e) {
+                console.error("Gagal ambil data:", e);
+                listEl.innerHTML = '<div class="text-center text-red-400 py-4">Gagal memuat data Cloud.<br>Cek koneksi internet atau URL.</div>';
+            }
+        };
+    </script>
+
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="screen bg-black/90 backdrop-blur-md z-50 p-4">
+        <div class="text-center p-6 md:p-8 border-2 border-cyan-500 rounded-3xl bg-indigo-900/50 shadow-[0_0_50px_rgba(34,211,238,0.3)] w-full max-w-sm relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-cyan-500 to-transparent"></div>
+            
+            <div class="mb-6 flex justify-center">
+                <div class="w-16 h-16 md:w-20 md:h-20 bg-indigo-800 rounded-full flex items-center justify-center border-4 border-cyan-400 shadow-lg shadow-cyan-500/50">
+                    <i data-lucide="user-plus" class="w-8 h-8 md:w-10 md:h-10 text-white"></i>
+                </div>
+            </div>
+            
+            <h2 class="text-2xl md:text-3xl font-tech font-bold text-white mb-2">IDENTIFIKASI PILOT</h2>
+            <p class="text-xs md:text-sm text-cyan-300 mb-6">Masukkan data diri untuk akses sistem</p>
+            
+            <div class="space-y-4">
+                <input type="text" id="inputName" class="input-space" placeholder="Nama Lengkap" autocomplete="off" maxlength="12">
+                <input type="text" id="inputSchool" class="input-space" placeholder="Asal Sekolah" autocomplete="off" maxlength="20">
+                
+                <button onclick="handleLogin()" class="btn-space w-full py-3 md:py-4 rounded-xl text-lg font-bold text-white flex items-center justify-center gap-2 mt-4">
+                    <i data-lucide="log-in"></i> DAFTAR MISI
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LANDING SCREEN -->
+    <div id="landingScreen" class="screen hidden-screen bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+        <div class="w-full max-w-md flex flex-col gap-4 my-auto">
+            <!-- Header Card -->
+            <div class="text-center p-6 border-4 border-indigo-500 rounded-3xl bg-indigo-900/40 shadow-lg relative">
+                <div class="mb-4 flex justify-center">
+                    <i data-lucide="rocket" class="w-16 h-16 text-yellow-400"></i>
+                </div>
+                <h1 class="text-3xl md:text-5xl font-tech font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 mb-2 leading-tight">ASTRO-SET DEFENDER</h1>
+                <div id="welcomeMsg" class="text-base md:text-lg font-bold text-cyan-300 mb-6 font-tech">Halo, Kadet!</div>
+                
+                <div class="flex flex-col gap-3">
+                    <button onclick="showInstruction()" class="btn-space w-full py-3 md:py-4 rounded-xl text-lg md:text-xl font-bold text-white flex items-center justify-center gap-2">
+                        <i data-lucide="play"></i> MULAI MISI
+                    </button>
+                    <button onclick="showLeaderboard()" class="glass-panel w-full py-3 rounded-xl text-base font-bold text-indigo-200 flex items-center justify-center gap-2 hover:bg-indigo-800/50 transition-colors">
+                        <i data-lucide="trophy"></i> PAPAN PERINGKAT
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEADERBOARD SCREEN -->
+    <div id="leaderboardScreen" class="screen hidden-screen bg-black/90 p-4">
+        <div class="w-full max-w-md h-[80vh] flex flex-col bg-slate-900 border border-slate-700 rounded-2xl mx-auto overflow-hidden">
+            <div class="p-4 border-b border-slate-700 bg-slate-800 flex justify-between items-center">
+                <h2 class="text-xl font-tech text-yellow-400 flex items-center gap-2">
+                    <i data-lucide="trophy" class="w-5 h-5"></i> TOP PILOTS
+                </h2>
+                <button onclick="switchScreen('landing')" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div id="leaderboardList" class="flex-1 p-4 overflow-y-auto no-scrollbar space-y-2">
+                <!-- Data injected here -->
+                <div class="text-center text-gray-500 mt-10">Memuat data...</div>
+            </div>
+            
+            <div class="p-4 border-t border-slate-700 bg-slate-800 text-center text-xs text-slate-500">
+                Data disimpan di Cloud (Google Sheet)
+            </div>
+        </div>
+    </div>
+
+    <!-- INSTRUCTION SCREEN -->
+    <div id="instructionScreen" class="screen hidden-screen bg-black/90 p-4">
+        <div class="max-w-md w-full p-6 bg-slate-900 border border-slate-700 rounded-2xl">
+            <h2 class="text-2xl font-tech text-cyan-400 mb-4 text-center">INSTRUKSI MISI</h2>
+            <ul class="space-y-4 text-slate-300 text-sm md:text-base">
+                <li class="flex items-start gap-3">
+                    <div class="bg-indigo-600 p-2 rounded-lg shrink-0"><i data-lucide="move" class="w-5 h-5"></i></div>
+                    <div>
+                        <strong class="text-white">Geser & Tahan!</strong>
+                        <p class="text-xs md:text-sm">Geser layar untuk bergerak. Pesawat menembak otomatis saat disentuh.</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="bg-green-600 p-2 rounded-lg shrink-0"><i data-lucide="crosshair" class="w-5 h-5"></i></div>
+                    <div>
+                        <strong class="text-white">Tembak Jawaban Benar!</strong>
+                        <p class="text-xs md:text-sm">Hancurkan objek yang sesuai dengan himpunan.</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="bg-yellow-500 p-2 rounded-lg shrink-0"><i data-lucide="zap" class="w-5 h-5 text-black"></i></div>
+                    <div>
+                        <strong class="text-white">Ambil Power Up!</strong>
+                        <p class="text-xs md:text-sm">🛡️ Perisai | ⚡ Tembakan Ganda | ❤️ Nyawa</p>
+                    </div>
+                </li>
+            </ul>
+            <button onclick="startGame()" class="mt-6 btn-space w-full py-3 rounded-lg font-bold text-white">SIAP MELUNCUR!</button>
+        </div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="gameOverScreen" class="screen hidden-screen bg-red-900/90 p-4">
+        <div class="text-center p-8 bg-black/50 rounded-3xl border-2 border-red-500 w-full max-w-sm">
+            <h2 class="text-3xl md:text-4xl font-tech text-red-500 mb-2">MISI GAGAL</h2>
+            <p class="text-lg text-white mb-6">Pesawat Hancur</p>
+            <div class="text-5xl md:text-6xl font-bold text-white mb-2" id="finalScore">0</div>
+            <div class="text-sm text-cyan-200 mb-8 animate-pulse">Menyimpan skor ke Cloud...</div>
+            
+            <div class="flex gap-2">
+                <button onclick="restartGame()" class="btn-space flex-1 py-3 rounded-full text-base font-bold">ULANGI</button>
+                <button onclick="switchScreen('landing')" class="glass-panel flex-1 py-3 rounded-full text-base font-bold text-white">MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEVEL CLEAR SCREEN -->
+    <div id="levelClearScreen" class="screen hidden-screen bg-green-900/90 p-4">
+        <div class="text-center p-8 bg-black/50 rounded-3xl border-2 border-green-500 w-full max-w-sm">
+            <h2 class="text-3xl md:text-4xl font-tech text-green-400 mb-2">MISI SELESAI!</h2>
+            <p class="text-lg text-white mb-6">Pengetahuan Himpunan Anda Luar Biasa!</p>
+            <div class="text-5xl md:text-6xl font-bold text-white mb-2" id="finalScoreClear">0</div>
+            <div class="text-sm text-cyan-200 mb-8 animate-pulse">Menyimpan skor ke Cloud...</div>
+            
+            <div class="flex gap-2">
+                <button onclick="switchScreen('landing')" class="btn-space flex-1 py-3 rounded-full text-base font-bold">MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME HUD & CANVAS -->
+    <div id="gameUI" class="hidden h-full w-full relative">
+        <!-- RESPONSIVE HUD -->
+        <div class="absolute top-0 left-0 w-full p-2 md:p-4 z-10 pointer-events-none flex flex-col md:flex-row justify-between gap-2">
+            
+            <!-- Mobile: Top Row (Score & Lives) -->
+            <div class="flex justify-between w-full md:w-auto items-center">
+                <!-- Score -->
+                <div class="bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-700 backdrop-blur flex items-center gap-2">
+                    <span class="text-[10px] text-slate-400 uppercase">SKOR</span>
+                    <span id="scoreDisplay" class="text-xl font-bold text-yellow-400 font-tech">0</span>
+                </div>
+                <!-- Lives -->
+                <div class="bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-700 backdrop-blur flex gap-1 text-red-500">
+                    <div id="livesDisplay" class="flex">
+                        <i data-lucide="heart" class="w-5 h-5 fill-current"></i>
+                        <i data-lucide="heart" class="w-5 h-5 fill-current"></i>
+                        <i data-lucide="heart" class="w-5 h-5 fill-current"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Question Box (Responsive Width) -->
+            <div class="w-full md:max-w-xl mx-auto">
+                <div class="bg-indigo-900/90 px-4 py-2 rounded-xl border-2 border-cyan-500 shadow-lg text-center backdrop-blur">
+                    <div class="flex justify-between items-center border-b border-cyan-700 pb-1 mb-1">
+                        <span id="pilotNameDisplay" class="text-[10px] text-cyan-300 font-bold uppercase tracking-widest truncate max-w-[150px]">PILOT: ???</span>
+                        <span class="text-[10px] text-yellow-400 animate-pulse">⚠ TARGET AKTIF</span>
+                    </div>
+                    <!-- Text clamped for mobile -->
+                    <div id="questionText" class="text-sm md:text-lg font-bold text-white leading-snug line-clamp-2 md:line-clamp-none">
+                        Memuat Misi...
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Spacer for desktop alignment -->
+            <div class="hidden md:block w-[120px]"></div>
+        </div>
+
+        <!-- Canvas -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Educational Popup (Overlay) -->
+        <div id="eduPopup" class="absolute inset-0 flex items-center justify-center bg-black/60 hidden z-50 p-4">
+            <div class="popup-animate bg-indigo-900 border-2 border-yellow-400 p-6 rounded-2xl w-full max-w-xs text-center shadow-[0_0_50px_rgba(250,204,21,0.4)]">
+                <div class="text-yellow-400 mb-2 font-bold font-tech text-xl">TEPAT SEKALI!</div>
+                <div id="eduIcon" class="mb-2 text-4xl">🌟</div>
+                <h3 id="eduTitle" class="text-lg font-bold text-white mb-2">Title</h3>
+                <p id="eduFact" class="text-sm text-indigo-200 mb-4 leading-tight">Fact content goes here.</p>
+                <div class="text-xs text-gray-400 animate-pulse">Lanjut dalam 2 detik...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME DATA ---
+        let questionBank = [
+            { q: "Himpunan Planet Dalam", targets: [{text:"Merkurius",type:"correct",fact:"Paling dekat Matahari"},{text:"Bumi",type:"correct",fact:"Satu-satunya kehidupan"},{text:"Jupiter",type:"wrong"},{text:"Saturnus",type:"wrong"}] },
+            { q: "Hewan Herbivora", targets: [{text:"Sapi",type:"correct",fact:"Makan rumput"},{text:"Kuda",type:"correct",fact:"Makan jerami"},{text:"Singa",type:"wrong"},{text:"Elang",type:"wrong"}] },
+            { q: "Bilangan Prima < 10", targets: [{text:"2",type:"correct",fact:"Prima genap"},{text:"7",type:"correct",fact:"Prima ganjil"},{text:"4",type:"wrong"},{text:"9",type:"wrong"}] },
+            { q: "Warna Primer", targets: [{text:"Merah",type:"correct",fact:"Warna dasar"},{text:"Biru",type:"correct",fact:"Warna dasar"},{text:"Hijau",type:"wrong"},{text:"Ungu",type:"wrong"}] },
+            { q: "Alat Musik Petik", targets: [{text:"Gitar",type:"correct",fact:"6 Senar"},{text:"Kecapi",type:"correct",fact:"Alat Sunda"},{text:"Drum",type:"wrong"},{text:"Suling",type:"wrong"}] }
+        ];
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // --- GAME ENGINE ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let animationId;
+        let lastTime = 0;
+
+        const gameState = {
+            screen: 'login',
+            score: 0,
+            lives: 3,
+            level: 0,
+            questionIndex: 0,
+            spawnTimer: 0,
+            spawnInterval: 1500,
+            difficultySpeed: 2,
+            width: 0,
+            height: 0,
+            shootTimer: 0,
+            shootInterval: 250,
+            powerUpTimer: 0,
+            powerUpInterval: 10000 
+        };
+
+        const player = { x: 0, y: 0, width: 50, height: 50, speed: 300, shield: false, weaponType: 'normal', weaponTimer: 0, name: "KADET", school: "" };
+        let bullets = [], enemies = [], particles = [], powerUps = [];
+        let currentQuestion = null;
+        let isFiring = false;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gameState.width = canvas.width;
+            gameState.height = canvas.height;
+            player.y = canvas.height - 120; // Slightly higher for thumb clearance
+            if (['login', 'landing', 'playing'].includes(gameState.screen)) {
+                player.x = canvas.width / 2 - player.width / 2;
+            }
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- INPUTS ---
+        // Enhanced for touch responsiveness
+        function handleInputMove(e) {
+            if (gameState.screen !== 'playing') return;
+            const rect = canvas.getBoundingClientRect();
+            let clientX = (e.type.includes('touch')) ? e.touches[0].clientX : e.clientX;
+            player.x = (clientX - rect.left) - player.width / 2;
+            // Clamp
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+        }
+
+        canvas.addEventListener('mousemove', handleInputMove);
+        canvas.addEventListener('touchmove', handleInputMove, { passive: false });
+        
+        // Auto-Fire triggers
+        const startFire = (e) => { isFiring = true; handleInputMove(e); gameState.shootTimer = gameState.shootInterval; };
+        const stopFire = () => { isFiring = false; };
+
+        canvas.addEventListener('mousedown', startFire);
+        canvas.addEventListener('touchstart', startFire, { passive: false });
+        window.addEventListener('mouseup', stopFire);
+        window.addEventListener('touchend', stopFire);
+
+        // --- GAME LOGIC ---
+        function switchScreen(name) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden-screen'));
+            document.getElementById('gameUI').classList.add('hidden');
+            
+            if(name === 'playing') document.getElementById('gameUI').classList.remove('hidden');
+            else {
+                const screenEl = document.getElementById(name + 'Screen');
+                if(screenEl) screenEl.classList.remove('hidden-screen');
+                else console.warn(`Screen ${name}Screen not found!`);
+            }
+            
+            gameState.screen = name;
+        }
+
+        function handleLogin() {
+            const n = document.getElementById('inputName').value.trim();
+            const s = document.getElementById('inputSchool').value.trim();
+            if(!n || !s) return alert("Isi data dulu ya!");
+            player.name = n.toUpperCase();
+            player.school = s.toUpperCase();
+            
+            document.getElementById('welcomeMsg').innerHTML = `Halo, <span class="text-white">${player.name}</span><br><span class="text-sm font-normal text-gray-400">${player.school}</span>`;
+            document.getElementById('pilotNameDisplay').innerText = `PILOT: ${player.name}`;
+            switchScreen('landing');
+            lucide.createIcons();
+        }
+
+        function showLeaderboard() {
+            switchScreen('leaderboard');
+            if(window.loadLeaderboardData) window.loadLeaderboardData();
+        }
+
+        function showInstruction() { switchScreen('instruction'); }
+
+        function startGame() {
+            gameState.score = 0;
+            gameState.lives = 3;
+            gameState.questionIndex = 0;
+            gameState.spawnInterval = 1500;
+            gameState.difficultySpeed = 2; // Pixel speed optimized for mobile
+            
+            player.shield = false;
+            player.weaponType = 'normal';
+            
+            bullets = []; enemies = []; particles = []; powerUps = [];
+            shuffleArray(questionBank);
+            
+            updateHUD();
+            loadQuestion();
+            switchScreen('playing');
+            resize(); // Ensure ship pos is correct
+            
+            lastTime = performance.now();
+            if(animationId) cancelAnimationFrame(animationId);
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function restartGame() { startGame(); }
+
+        function loadQuestion() {
+            const idx = gameState.questionIndex % questionBank.length;
+            currentQuestion = questionBank[idx];
+            document.getElementById('questionText').innerText = currentQuestion.q;
+            
+            // Increase difficulty
+            gameState.spawnInterval = Math.max(600, 1500 - (gameState.score * 0.5));
+            gameState.difficultySpeed = 2 + (gameState.score / 1000);
+        }
+
+        function spawnEnemy() {
+            const isCorrect = Math.random() > 0.6;
+            let t;
+            if(isCorrect) {
+                const c = currentQuestion.targets.filter(x => x.type === 'correct');
+                t = c[Math.floor(Math.random()*c.length)];
+            } else {
+                const w = currentQuestion.targets.filter(x => x.type === 'wrong');
+                t = w[Math.floor(Math.random()*w.length)];
+            }
+            if(!t) return;
+
+            enemies.push({
+                x: Math.random() * (canvas.width - 60),
+                y: -60,
+                width: 60, // Bigger hit box for mobile
+                height: 50,
+                text: t.text,
+                type: t.type,
+                fact: t.fact || "",
+                speed: gameState.difficultySpeed * (Math.random() * 0.4 + 0.8),
+                color: '#38bdf8' 
+            });
+        }
+
+        function spawnPowerUp() {
+            const types = ['shield', 'spread', 'life'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            let icon, color;
+            if(type==='shield'){icon='🛡️'; color='#06b6d4';}
+            if(type==='spread'){icon='⚡'; color='#facc15';}
+            if(type==='life'){icon='❤️'; color='#ef4444';}
+            
+            powerUps.push({
+                x: Math.random() * (canvas.width - 40),
+                y: -40, width: 40, height: 40, type: type, color: color, icon: icon,
+                speed: gameState.difficultySpeed * 0.8
+            });
+        }
+
+        function fireBullet() {
+            playSound('shoot');
+            if(player.weaponType === 'spread') {
+                bullets.push({x: player.x+23, y: player.y, w:4, h:15, s:10, a:0});
+                bullets.push({x: player.x+23, y: player.y, w:4, h:15, s:10, a:-0.2});
+                bullets.push({x: player.x+23, y: player.y, w:4, h:15, s:10, a:0.2});
+            } else {
+                bullets.push({x: player.x+23, y: player.y, w:4, h:15, s:10, a:0});
+            }
+        }
+
+        function showEduPopup(title, fact) {
+            const prev = gameState.screen;
+            gameState.screen = 'paused';
+            const el = document.getElementById('eduPopup');
+            document.getElementById('eduTitle').innerText = title;
+            document.getElementById('eduFact').innerText = fact;
+            el.classList.remove('hidden');
+            setTimeout(() => {
+                el.classList.add('hidden');
+                gameState.screen = prev;
+                lastTime = performance.now();
+                requestAnimationFrame(gameLoop);
+            }, 2000);
+        }
+
+        function showPowerUpText(txt) {
+            const div = document.createElement('div');
+            div.className = 'powerup-text';
+            div.innerText = txt;
+            document.getElementById('fxContainer').appendChild(div);
+            setTimeout(()=>div.remove(), 1000);
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreDisplay').innerText = gameState.score;
+            let html = '';
+            for(let i=0; i<gameState.lives; i++) html += `<svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>`;
+            document.getElementById('livesDisplay').innerHTML = html;
+        }
+
+        function gameOver() {
+            // gameState.screen = 'gameover'; // Redundant, switchScreen handles it
+            document.getElementById('finalScore').innerText = gameState.score;
+            if(window.saveScoreToCloud) window.saveScoreToCloud(player.name, player.school, gameState.score);
+            switchScreen('gameOver'); // Fixed case
+        }
+        
+        function gameClear() {
+             // gameState.screen = 'clear'; // Redundant
+             document.getElementById('finalScoreClear').innerText = gameState.score;
+             if(window.saveScoreToCloud) window.saveScoreToCloud(player.name, player.school, gameState.score);
+             switchScreen('levelClear'); // Fixed ID reference
+        }
+
+        // --- MAIN LOOP ---
+        function gameLoop(ts) {
+            if(gameState.screen !== 'playing') return;
+            const dt = ts - lastTime;
+            lastTime = ts;
+            
+            ctx.clearRect(0,0, canvas.width, canvas.height);
+
+            // 1. Fire Logic
+            if(isFiring) {
+                gameState.shootTimer += dt;
+                if(gameState.shootTimer > gameState.shootInterval) {
+                    fireBullet(); gameState.shootTimer = 0;
+                }
+            } else gameState.shootTimer = gameState.shootInterval;
+
+            if(player.weaponType !== 'normal') {
+                player.weaponTimer -= dt;
+                if(player.weaponTimer <= 0) player.weaponType = 'normal';
+            }
+
+            // 2. Draw Ship
+            ctx.fillStyle = '#6366f1';
+            ctx.beginPath();
+            ctx.moveTo(player.x+25, player.y);
+            ctx.lineTo(player.x+50, player.y+50);
+            ctx.lineTo(player.x+25, player.y+40);
+            ctx.lineTo(player.x, player.y+50);
+            ctx.fill();
+            // Flame
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath();
+            ctx.moveTo(player.x+20, player.y+45);
+            ctx.lineTo(player.x+30, player.y+45);
+            ctx.lineTo(player.x+25, player.y+55 + Math.random()*10);
+            ctx.fill();
+
+            // Shield
+            if(player.shield) {
+                ctx.strokeStyle = '#06b6d4';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(player.x+25, player.y+25, 40, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.globalAlpha = 0.2;
+                ctx.fillStyle = '#06b6d4';
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // 3. Spawners
+            gameState.spawnTimer += dt;
+            if(gameState.spawnTimer > gameState.spawnInterval) { spawnEnemy(); gameState.spawnTimer = 0; }
+            gameState.powerUpTimer += dt;
+            if(gameState.powerUpTimer > gameState.powerUpInterval) { spawnPowerUp(); gameState.powerUpTimer = 0; }
+
+            // 4. Bullets
+            ctx.fillStyle = '#f472b6';
+            for(let i=bullets.length-1; i>=0; i--) {
+                let b = bullets[i];
+                b.y -= b.s * Math.cos(b.a);
+                b.x += b.s * Math.sin(b.a);
+                ctx.fillRect(b.x, b.y, b.w, b.h);
+                if(b.y < 0) bullets.splice(i, 1);
+            }
+
+            // 5. Enemies
+            for(let i=enemies.length-1; i>=0; i--) {
+                let e = enemies[i];
+                e.y += e.speed;
+                
+                // Box
+                ctx.fillStyle = '#1e293b';
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(e.x, e.y, e.width + 40, 40, 10);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Text
+                ctx.fillStyle = 'white';
+                ctx.font = '14px "Exo 2"'; // Smaller font for mobile safety
+                ctx.textAlign = 'center';
+                ctx.fillText(e.text, e.x + (e.width+40)/2, e.y+25);
+
+                // Collision Player
+                if(player.x < e.x+e.width+40 && player.x+50 > e.x && player.y < e.y+40 && player.y+50 > e.y) {
+                    enemies.splice(i, 1);
+                    if(player.shield) {
+                        playSound('powerup'); // Shield break sound reuse
+                        player.shield = false;
+                    } else {
+                        playSound('wrong');
+                        gameState.lives--;
+                        updateHUD();
+                        if(gameState.lives <= 0) gameOver();
+                    }
+                    continue;
+                }
+
+                // Collision Bullet
+                for(let j=bullets.length-1; j>=0; j--) {
+                    let b = bullets[j];
+                    if(b.x > e.x && b.x < e.x+e.width+40 && b.y < e.y+40 && b.y > e.y) {
+                        bullets.splice(j, 1);
+                        enemies.splice(i, 1);
+                        if(e.type === 'correct') {
+                            playSound('correct');
+                            gameState.score += 100;
+                            showEduPopup(e.text, e.fact);
+                            if(gameState.score % 500 === 0) { gameState.questionIndex++; loadQuestion(); }
+                        } else {
+                            playSound('wrong');
+                            gameState.lives--;
+                        }
+                        updateHUD();
+                        if(gameState.lives <= 0) gameOver();
+                        break;
+                    }
+                }
+                if(e.y > canvas.height) enemies.splice(i, 1);
+            }
+
+            // 6. PowerUps
+            for(let i=powerUps.length-1; i>=0; i--) {
+                let p = powerUps[i];
+                p.y += p.speed;
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x+20, p.y+20, 20, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.stroke();
+                ctx.fillStyle='white'; ctx.font='20px Arial'; ctx.textAlign='center'; ctx.fillText(p.icon, p.x+20, p.y+28);
+
+                // Collision
+                if(player.x < p.x+40 && player.x+50 > p.x && player.y < p.y+40 && player.y+50 > p.y) {
+                    playSound('powerup');
+                    if(p.type==='shield') { player.shield = true; showPowerUpText("PERISAI!"); }
+                    if(p.type==='spread') { player.weaponType = 'spread'; player.weaponTimer = 5000; showPowerUpText("TRIPLE SHOT!"); }
+                    if(p.type==='life') { if(gameState.lives<5) gameState.lives++; updateHUD(); showPowerUpText("NYAWA +1"); }
+                    powerUps.splice(i, 1);
+                    continue;
+                }
+                if(p.y > canvas.height) powerUps.splice(i, 1);
+            }
+            
+            if (gameState.score >= 5000) { 
+                 gameClear();
+                 return;
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
